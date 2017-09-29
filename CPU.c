@@ -15,6 +15,13 @@ int main(int argc, char **argv)
   struct trace_item *tr_entry;
   size_t size;
   char *trace_file_name;
+  
+  //Buffer Declarations
+  struct trace_item IF_ID;
+  struct trace_item ID_EX;
+  struct trace_item EX_MEM;
+  struct trace_item MEM_WB;
+  
   int trace_view_on = 0;
   
   unsigned char t_type = 0;
@@ -33,7 +40,8 @@ int main(int argc, char **argv)
   }
     
   trace_file_name = argv[1];
-  if (argc == 3) trace_view_on = atoi(argv[2]) ;
+  if (argc == 3) trace_view_on = atoi(argv[2]) ; //doesn't check for number of arg
+  
 
   fprintf(stdout, "\n ** opening file %s\n", trace_file_name);
 
@@ -47,21 +55,57 @@ int main(int argc, char **argv)
   trace_init();
 
   while(1) {
-    size = trace_get_item(&tr_entry);
+  
+  	// Check for lw hazard
+  	if( (ID_EX.type == 3) && ((ID_EX.dReg == IF_ID.sReg_a) || (ID_EX.dReg == IF_ID.sReg_b)))
+  	{
+  		tr_entry = &IF_ID;
+  		IF_ID.type = 0;
+  		
+  		/*tr_entry->type = IF_ID.type;
+  		tr_entry->sReg_a = IF_ID.sReg_a;
+  		tr_entry->sReg_b = IF_ID.sReg_b;
+  		tr_entry->dReg = IF_ID.dReg;
+  		tr_entry->PC = IF_ID.PC;
+  		tr_entry->Addr = IF_ID.Addr;
+  		
+  		IF_ID.type = 0;*/
+   	}
+   	else
+   	{
+   		 size = trace_get_item(&tr_entry);
+   	}
    
     if (!size) {       /* no more instructions (trace_items) to simulate */
       printf("+ Simulation terminates at cycle : %u\n", cycle_number);
       break;
     }
-    else{              /* parse the next instruction to simulate */
-      cycle_number++;
-      t_type = tr_entry->type;
-      t_sReg_a = tr_entry->sReg_a;
-      t_sReg_b = tr_entry->sReg_b;
-      t_dReg = tr_entry->dReg;
-      t_PC = tr_entry->PC;
-      t_Addr = tr_entry->Addr;
+    else{           
+      	cycle_number++;
+    
+		struct trace_item temp1, temp2;
+		//Copy first two buffers into temps
+		temp1 = IF_ID;
+		temp2 = ID_EX;
+		//Bring new instruction into IF_ID buffer
+		IF_ID = *tr_entry;
+		//Propagate the old instructions to the next stage
+		ID_EX = temp1;
+		temp1 = EX_MEM;	
+		EX_MEM = temp2;
+		//Output the completed instruction
+		t_type = MEM_WB.type;
+    	t_sReg_a = MEM_WB.sReg_a;
+    	t_sReg_b = MEM_WB.sReg_b;
+    	t_dReg = MEM_WB.dReg;
+    	t_PC = MEM_WB.PC;
+    	t_Addr = MEM_WB.Addr;
+    
+		MEM_WB = temp1;
+		
+		
     }  
+	
 
 // SIMULATION OF A SINGLE CYCLE cpu IS TRIVIAL - EACH INSTRUCTION IS EXECUTED
 // IN ONE CYCLE
