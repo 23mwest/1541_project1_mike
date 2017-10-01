@@ -61,16 +61,16 @@ int main(int argc, char **argv)
   	if( (ID_EX.type == 3) && ((ID_EX.dReg == IF_ID.sReg_a) || (ID_EX.dReg == IF_ID.sReg_b)))
   	{
   		fetch_entry = &IF_ID;
+  		//IF_ID.type = 0;
+  		
+  		fetch_entry->type = IF_ID.type;
+  		fetch_entry->sReg_a = IF_ID.sReg_a;
+  		fetch_entry->sReg_b = IF_ID.sReg_b;
+  		fetch_entry->dReg = IF_ID.dReg;
+  		fetch_entry->PC = IF_ID.PC;
+  		fetch_entry->Addr = IF_ID.Addr;
+  		
   		IF_ID.type = 0;
-  		
-  		/*tr_entry->type = IF_ID.type;
-  		tr_entry->sReg_a = IF_ID.sReg_a;
-  		tr_entry->sReg_b = IF_ID.sReg_b;
-  		tr_entry->dReg = IF_ID.dReg;
-  		tr_entry->PC = IF_ID.PC;
-  		tr_entry->Addr = IF_ID.Addr;
-  		
-  		IF_ID.type = 0;*/
    	}
    	else
    	{
@@ -91,25 +91,22 @@ int main(int argc, char **argv)
 		IF_ID = *fetch_entry;
 		//Propagate the old instructions to the next stage
 		ID_EX = temp1;
-		temp1 = EX_MEM;	
+		//printf("temp1 type <= IF_ID: %d\n", temp1.type);
+		//printf("temp2 nzero type <= ID_EX: %d\n", temp2.type);
+		temp1 = EX_MEM; //WTF	
+		//printf("1temp1 type <= EX_MEM: %d\n", temp1.type);
 		EX_MEM = temp2;
-		//Output the completed instruction
-		tr_entry->type = MEM_WB.type;
-    	tr_entry->sReg_a = MEM_WB.sReg_a;
-    	tr_entry->sReg_b = MEM_WB.sReg_b;
-    	tr_entry->dReg = MEM_WB.dReg;
-    	tr_entry->PC = MEM_WB.PC;
-    	tr_entry->Addr = MEM_WB.Addr;
-    
+		//printf("2temp1 type <= EX_MEM: %d\n", temp1.type);
+		
+    	//*tr_entry = MEM_WB; //WTF
+    	temp2 = MEM_WB;
+    	
 		MEM_WB = temp1;
 		
+		*tr_entry = temp2;
+		
 		cycle_number++;
-
     }  
-	
-
-// SIMULATION OF A SINGLE CYCLE cpu IS TRIVIAL - EACH INSTRUCTION IS EXECUTED
-// IN ONE CYCLE
 
     if (trace_view_on) {/* print the executed instruction if trace_view_on=1 */
       switch(tr_entry->type) {
