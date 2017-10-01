@@ -68,23 +68,20 @@ int main(int argc, char **argv)
   	// Check for lw hazard
   	if( (ID_EX.type == 3) && ((ID_EX.dReg == IF_ID.sReg_a) || (ID_EX.dReg == IF_ID.sReg_b)))
   	{
-  		fetch_entry = &IF_ID;
+  		*fetch_entry = IF_ID;
   		//IF_ID.type = 0;
   		
-  		/*fetch_entry->type = IF_ID.type;
-  		fetch_entry->sReg_a = IF_ID.sReg_a;
-  		fetch_entry->sReg_b = IF_ID.sReg_b;
-  		fetch_entry->dReg = IF_ID.dReg;
-  		fetch_entry->PC = IF_ID.PC;
-  		fetch_entry->Addr = IF_ID.Addr;*/
-  		
-  		*fetch_entry = IF_ID; //WTF
+  		//*fetch_entry = IF_ID; //WTF
   		
   		IF_ID.type = 0;
    	}
-   	/*else if( (ID_EX.type == 5) || (ID_EX.type == 6) || (ID_EX.type == 8)) //branch/jump/jr
+   	/*else if( (EX_MEM.type == 5) || (EX_MEM.type == 6) || (EX_MEM.type == 8)) //branch/jump/jr
    	{ 
-   		continue;
+		//Check PC of Branch/Jump/jr
+		unsigned int b_pc, 
+		= EX_MEM.PC;
+		
+		
    	}*/
    	else
    	{
@@ -109,7 +106,6 @@ int main(int argc, char **argv)
 		temp1 = EX_MEM;
 
 		EX_MEM = temp2;
-
 		
     	//*tr_entry = MEM_WB; //WTF
     	temp2 = MEM_WB;
@@ -118,12 +114,16 @@ int main(int argc, char **argv)
 		
 		*tr_entry = temp2;
 		
-		
+		//Print Current Cycle instructions
+		//printf("IF_ID|| type: %d\n", IF_ID.type);
+		//printf("ID_EX|| type: %d\n", ID_EX.type);
+		//printf("EX_MEM|| type: %d\n", EX_MEM.type);
+		//printf("MEM_WB|| type: %d\n", MEM_WB.type);
 		
 		cycle_number++;
     }  
 
-    if (trace_view_on) {/* print the executed instruction if trace_view_on=1 */
+    if (trace_view_on && (cycle_number != 1)) {/* print the executed instruction if trace_view_on=1 */
       switch(tr_entry->type) {
         case ti_NOP:
           printf("[cycle %d] NOP:",cycle_number) ;
