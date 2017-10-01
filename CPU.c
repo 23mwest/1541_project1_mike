@@ -12,8 +12,7 @@
 
 int main(int argc, char **argv)
 {
-  struct trace_item *tr_entry;
-  struct trace_item *fetch_entry;
+  struct trace_item *fetch_entry, *tr_entry;
   size_t size;
   char *trace_file_name;
   
@@ -24,6 +23,7 @@ int main(int argc, char **argv)
   struct trace_item MEM_WB;
   
   int trace_view_on = 0;
+  int branch_predictor = 0;
   
   unsigned char t_type = 0;
   unsigned char t_sReg_a= 0;
@@ -34,15 +34,23 @@ int main(int argc, char **argv)
 
   unsigned int cycle_number = 0;
 
-  if (argc == 1) {
-    fprintf(stdout, "\nUSAGE: tv <trace_file> <switch - any character>\n");
+  if (argc == 2) {
+    //Assume branch prediction field = 0 and trace = 0
+    
+    
+  }
+  else if (argc == 4) {
+  	branch_predictor = atoi(argv[2]);
+  	trace_view_on = atoi(argv[3]);
+  }
+  else {
+ 	fprintf(stdout, "\nUSAGE: tv <trace_file> <branch prediction (0/1)> <switch - (0/1)>\n");
+    fprintf(stdout, "\n(branch) 0- predict not taken 1- use 1-bit branch detector.\n");
     fprintf(stdout, "\n(switch) to turn on or off individual item view.\n\n");
     exit(0);
   }
     
   trace_file_name = argv[1];
-  if (argc == 3) trace_view_on = atoi(argv[2]) ; //doesn't check for number of arg
-  
 
   fprintf(stdout, "\n ** opening file %s\n", trace_file_name);
 
@@ -63,15 +71,21 @@ int main(int argc, char **argv)
   		fetch_entry = &IF_ID;
   		//IF_ID.type = 0;
   		
-  		fetch_entry->type = IF_ID.type;
+  		/*fetch_entry->type = IF_ID.type;
   		fetch_entry->sReg_a = IF_ID.sReg_a;
   		fetch_entry->sReg_b = IF_ID.sReg_b;
   		fetch_entry->dReg = IF_ID.dReg;
   		fetch_entry->PC = IF_ID.PC;
-  		fetch_entry->Addr = IF_ID.Addr;
+  		fetch_entry->Addr = IF_ID.Addr;*/
+  		
+  		*fetch_entry = IF_ID; //WTF
   		
   		IF_ID.type = 0;
    	}
+   	/*else if( (ID_EX.type == 5) || (ID_EX.type == 6) || (ID_EX.type == 8)) //branch/jump/jr
+   	{ 
+   		continue;
+   	}*/
    	else
    	{
    		 size = trace_get_item(&fetch_entry);
@@ -89,14 +103,13 @@ int main(int argc, char **argv)
 		temp2 = ID_EX;
 		//Bring new instruction into IF_ID buffer
 		IF_ID = *fetch_entry;
+		
 		//Propagate the old instructions to the next stage
 		ID_EX = temp1;
-		//printf("temp1 type <= IF_ID: %d\n", temp1.type);
-		//printf("temp2 nzero type <= ID_EX: %d\n", temp2.type);
-		temp1 = EX_MEM; //WTF	
-		//printf("1temp1 type <= EX_MEM: %d\n", temp1.type);
+		temp1 = EX_MEM;
+
 		EX_MEM = temp2;
-		//printf("2temp1 type <= EX_MEM: %d\n", temp1.type);
+
 		
     	//*tr_entry = MEM_WB; //WTF
     	temp2 = MEM_WB;
@@ -104,6 +117,8 @@ int main(int argc, char **argv)
 		MEM_WB = temp1;
 		
 		*tr_entry = temp2;
+		
+		
 		
 		cycle_number++;
     }  
@@ -152,5 +167,3 @@ int main(int argc, char **argv)
 
   exit(0);
 }
-
-
