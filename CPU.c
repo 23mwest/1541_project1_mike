@@ -13,6 +13,7 @@
 int main(int argc, char **argv)
 {
   struct trace_item *tr_entry;
+  struct trace_item *fetch_entry;
   size_t size;
   char *trace_file_name;
   
@@ -59,7 +60,7 @@ int main(int argc, char **argv)
   	// Check for lw hazard
   	if( (ID_EX.type == 3) && ((ID_EX.dReg == IF_ID.sReg_a) || (ID_EX.dReg == IF_ID.sReg_b)))
   	{
-  		tr_entry = &IF_ID;
+  		fetch_entry = &IF_ID;
   		IF_ID.type = 0;
   		
   		/*tr_entry->type = IF_ID.type;
@@ -73,7 +74,7 @@ int main(int argc, char **argv)
    	}
    	else
    	{
-   		 size = trace_get_item(&tr_entry);
+   		 size = trace_get_item(&fetch_entry);
    	}
    
     if (!size) {       /* no more instructions (trace_items) to simulate */
@@ -81,29 +82,29 @@ int main(int argc, char **argv)
       break;
     }
     else{           
-      	cycle_number++;
     
 		struct trace_item temp1, temp2;
 		//Copy first two buffers into temps
 		temp1 = IF_ID;
 		temp2 = ID_EX;
 		//Bring new instruction into IF_ID buffer
-		IF_ID = *tr_entry;
+		IF_ID = *fetch_entry;
 		//Propagate the old instructions to the next stage
 		ID_EX = temp1;
 		temp1 = EX_MEM;	
 		EX_MEM = temp2;
 		//Output the completed instruction
-		t_type = MEM_WB.type;
-    	t_sReg_a = MEM_WB.sReg_a;
-    	t_sReg_b = MEM_WB.sReg_b;
-    	t_dReg = MEM_WB.dReg;
-    	t_PC = MEM_WB.PC;
-    	t_Addr = MEM_WB.Addr;
+		tr_entry->type = MEM_WB.type;
+    	tr_entry->sReg_a = MEM_WB.sReg_a;
+    	tr_entry->sReg_b = MEM_WB.sReg_b;
+    	tr_entry->dReg = MEM_WB.dReg;
+    	tr_entry->PC = MEM_WB.PC;
+    	tr_entry->Addr = MEM_WB.Addr;
     
 		MEM_WB = temp1;
 		
-		
+		cycle_number++;
+
     }  
 	
 

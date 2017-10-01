@@ -1,6 +1,8 @@
 #ifndef TRACE_ITEM_H
 #define TRACE_ITEM_H
 
+#include <stdlib.h>
+
 // this is tpts
 enum trace_item_type {
 	ti_NOP = 0,
