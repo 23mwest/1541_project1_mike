@@ -23,6 +23,8 @@ int main(int argc, char **argv)
   struct trace_item MEM_WB;
   
   int trace_view_on = 0;
+  int stop = -1;
+  int flag = 0; 
   int branch_predictor = 0;
   
   unsigned char t_type = 0;
@@ -66,21 +68,44 @@ int main(int argc, char **argv)
   while(1) {
   
   	// Check for lw hazard
-  	if( (ID_EX.type == 3) && ((ID_EX.dReg == IF_ID.sReg_a) || (ID_EX.dReg == IF_ID.sReg_b)))
+  	if( (EX_MEM.type == 3) && ((EX_MEM.dReg == IF_ID.sReg_a) || (EX_MEM.dReg == IF_ID.sReg_b)))
   	{
+  		//printf("IF_ID type: %d\n", IF_ID.type);
+  		//printf("ID_EX type: %d\n", ID_EX.type);
+  		//printf("EX_MEM type: %d\n", EX_MEM.type);
+  		
+  		  		  		
   		*fetch_entry = IF_ID;
-  		//IF_ID.type = 0;
   		
-  		//*fetch_entry = IF_ID; //WTF
+  		IF_ID = ID_EX;
   		
-  		IF_ID.type = 0;
+  		ID_EX.type = 0;
+  		
+  		//printf("IF_ID type: %d\n", IF_ID.type);
+  		//printf("ID_EX type: %d\n", ID_EX.type);
+  		//printf("EX_MEM type: %d\n", EX_MEM.type);  		
    	}
-   	/*else if( (EX_MEM.type == 5) || (EX_MEM.type == 6) || (EX_MEM.type == 8)) //branch/jump/jr
+   	/*else if( branch_predictor == 0 )
    	{ 
-		//Check PC of Branch/Jump/jr
-		unsigned int b_pc, 
-		= EX_MEM.PC;
+   		if( (EX_MEM.type == 5) || (EX_MEM.type == 6) || (EX_MEM.type == 8)) //branch/jump/jr
+		{
+			//Check PC of Branch/Jump/jr
+			unsigned int b_pc, id_pc;
+			b_pc = EX_MEM.PC;
+			id_pc = ID_EX.PC;
+			if((id_pc - b_pc) == 4)
+			{
+				//branch not taken
+			
+			}
+			else
+			{
+				//branch taken, squach first two buffers
+				IF_ID.type = 0;
+				ID_EX.type = 0;
 		
+			}
+		}
 		
    	}*/
    	else
@@ -88,18 +113,20 @@ int main(int argc, char **argv)
    		 size = trace_get_item(&fetch_entry);
    	}
    
-    if (!size) {       /* no more instructions (trace_items) to simulate */
-      printf("+ Simulation terminates at cycle : %u\n", cycle_number);
-      break;
+    if (cycle_number == stop) {       /* no more instructions (trace_items) to simulate */
+        printf("+ Simulation terminates at cycle : %u\n", cycle_number);
+      	break;
     }
     else{           
-    
 		struct trace_item temp1, temp2;
 		//Copy first two buffers into temps
 		temp1 = IF_ID;
 		temp2 = ID_EX;
 		//Bring new instruction into IF_ID buffer
-		IF_ID = *fetch_entry;
+		if (size)
+		{
+			IF_ID = *fetch_entry;
+		}
 		
 		//Propagate the old instructions to the next stage
 		ID_EX = temp1;
@@ -120,10 +147,16 @@ int main(int argc, char **argv)
 		//printf("EX_MEM|| type: %d\n", EX_MEM.type);
 		//printf("MEM_WB|| type: %d\n", MEM_WB.type);
 		
+		if(!size && flag == 0)
+		{
+			flag = 1;
+			stop = cycle_number + 4;
+		}
+	
 		cycle_number++;
     }  
 
-    if (trace_view_on && (cycle_number != 1)) {/* print the executed instruction if trace_view_on=1 */
+    if (trace_view_on) {/* print the executed instruction if trace_view_on=1 and don't print the first cycle's initial value*/
       switch(tr_entry->type) {
         case ti_NOP:
           printf("[cycle %d] NOP:",cycle_number) ;
