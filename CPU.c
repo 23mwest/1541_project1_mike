@@ -23,8 +23,7 @@ int main(int argc, char **argv)
   struct trace_item MEM_WB;
   
   int trace_view_on = 0;
-  int stop = -1;
-  int flag = 0; 
+  int stop = -1,  flag = 0, squash = 0; 
   int branch_predictor = 0;
   
   unsigned char t_type = 0;
@@ -67,32 +66,24 @@ int main(int argc, char **argv)
 
   while(1) {
   
-  	// Check for lw hazard
+  	// Check for lw hazard DEBUG: should these be detected in the ID_EX buffer?
   	if( (EX_MEM.type == 3) && ((EX_MEM.dReg == IF_ID.sReg_a) || (EX_MEM.dReg == IF_ID.sReg_b)))
   	{
-  		//printf("IF_ID type: %d\n", IF_ID.type);
-  		//printf("ID_EX type: %d\n", ID_EX.type);
-  		//printf("EX_MEM type: %d\n", EX_MEM.type);
-  		
-  		  		  		
   		*fetch_entry = IF_ID;
   		
   		IF_ID = ID_EX;
   		
-  		ID_EX.type = 0;
-  		
-  		//printf("IF_ID type: %d\n", IF_ID.type);
-  		//printf("ID_EX type: %d\n", ID_EX.type);
-  		//printf("EX_MEM type: %d\n", EX_MEM.type);  		
+  		ID_EX.type = 0;		
    	}
-   	/*else if( branch_predictor == 0 )
+   	else if( branch_predictor == 0 )
    	{ 
-   		if( (EX_MEM.type == 5) || (EX_MEM.type == 6) || (EX_MEM.type == 8)) //branch/jump/jr
+   		if( (EX_MEM.type == 5)) //branch/jump/jr
 		{
 			//Check PC of Branch/Jump/jr
 			unsigned int b_pc, id_pc;
 			b_pc = EX_MEM.PC;
 			id_pc = ID_EX.PC;
+			
 			if((id_pc - b_pc) == 4)
 			{
 				//branch not taken
@@ -101,13 +92,16 @@ int main(int argc, char **argv)
 			else
 			{
 				//branch taken, squach first two buffers
-				IF_ID.type = 0;
-				ID_EX.type = 0;
-		
+				/*printf("[cycle %d] SQUASHED\n",cycle_number);
+				cycle_number++;
+				printf("[cycle %d] SQUASHED\n",cycle_number);
+				cycle_number++;*/
+				squash = 1;
 			}
 		}
 		
-   	}*/
+		size = trace_get_item(&fetch_entry);
+   	}
    	else
    	{
    		 size = trace_get_item(&fetch_entry);
@@ -123,12 +117,12 @@ int main(int argc, char **argv)
 		temp1 = IF_ID;
 		temp2 = ID_EX;
 		//Bring new instruction into IF_ID buffer
-		if (size)
+		if (fetch_entry != 0 || size) //(size)
 		{
-			IF_ID = *fetch_entry;
+			IF_ID = *fetch_entry; //SEGFAULT
 		}
 		
-		//Propagate the old instructions to the next stage
+		//Propagate the old instructions to the next stage i.e. fetch_entry => IF_ID => ID_EX => EX_MEM => MEM_WB => tr_entry
 		ID_EX = temp1;
 		temp1 = EX_MEM;
 
@@ -147,12 +141,14 @@ int main(int argc, char **argv)
 		//printf("EX_MEM|| type: %d\n", EX_MEM.type);
 		//printf("MEM_WB|| type: %d\n", MEM_WB.type);
 		
+		//clear the pipeline after the size returns an empty string
 		if(!size && flag == 0)
 		{
 			flag = 1;
 			stop = cycle_number + 4;
+			squash = 1;
 		}
-	
+			
 		cycle_number++;
     }  
 
@@ -193,6 +189,15 @@ int main(int argc, char **argv)
           printf(" (PC: %x) (sReg_a: %d)(addr: %x)\n", tr_entry->PC, tr_entry->dReg, tr_entry->Addr);
           break;
       }
+      	
+		if(squash == 1 && tr_entry->type == 5)
+		{
+			//insert squashes
+			cycle_number++;
+			printf("[cycle %d] SQUASHED\n",cycle_number);
+			cycle_number++;
+			printf("[cycle %d] SQUASHED\n",cycle_number);
+		}
     }
   }
 
