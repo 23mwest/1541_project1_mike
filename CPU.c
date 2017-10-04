@@ -12,7 +12,7 @@
 
 int main(int argc, char **argv)
 {
-  struct trace_item *fetch_entry, *tr_entry;
+  struct trace_item *fetch_entry=malloc(sizeof(struct trace_item)), *tr_entry=malloc(sizeof(struct trace_item));
   size_t size;
   char *trace_file_name;
   
@@ -64,6 +64,7 @@ int main(int argc, char **argv)
 
   trace_init();
 
+//Begin pipeline computation
   while(1) {
   
   	// Check for lw hazard DEBUG: should these be detected in the ID_EX buffer?
@@ -77,25 +78,20 @@ int main(int argc, char **argv)
    	}
    	else if( branch_predictor == 0 )
    	{ 
-   		if( (EX_MEM.type == 5)) //branch/jump/jr
+   		if( (EX_MEM.type == 5)) //branch
 		{
-			//Check PC of Branch/Jump/jr
+			//Check PC of Branch with instruction in ID buffer
 			unsigned int b_pc, id_pc;
 			b_pc = EX_MEM.PC;
 			id_pc = ID_EX.PC;
 			
 			if((id_pc - b_pc) == 4)
 			{
-				//branch not taken
-			
+				//Branch not taken
 			}
 			else
 			{
-				//branch taken, squach first two buffers
-				/*printf("[cycle %d] SQUASHED\n",cycle_number);
-				cycle_number++;
-				printf("[cycle %d] SQUASHED\n",cycle_number);
-				cycle_number++;*/
+				//branch taken, squash first two buffers
 				squash = 1;
 			}
 		}
@@ -104,7 +100,7 @@ int main(int argc, char **argv)
    	}
    	else
    	{
-   		 size = trace_get_item(&fetch_entry);
+    	size = trace_get_item(&fetch_entry);
    	}
    
     if (cycle_number == stop) {       /* no more instructions (trace_items) to simulate */
@@ -119,7 +115,7 @@ int main(int argc, char **argv)
 		//Bring new instruction into IF_ID buffer
 		if (fetch_entry != 0 || size) //(size)
 		{
-			IF_ID = *fetch_entry; //SEGFAULT
+			IF_ID = *fetch_entry;
 		}
 		
 		//Propagate the old instructions to the next stage i.e. fetch_entry => IF_ID => ID_EX => EX_MEM => MEM_WB => tr_entry
@@ -190,7 +186,7 @@ int main(int argc, char **argv)
           break;
       }
       	
-		if(squash == 1 && tr_entry->type == 5)
+		if(squash == 1 && tr_entry->type == 5 && cycle_number < stop-1)
 		{
 			//insert squashes
 			cycle_number++;
