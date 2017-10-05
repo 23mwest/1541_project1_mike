@@ -8,13 +8,22 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
+#include <string.h> //added
 #include "CPU.h" 
+
+struct btb_entry {
+	unsigned int entry_Addr;
+	unsigned int btb_taken;
+};
 
 int main(int argc, char **argv)
 {
   struct trace_item *fetch_entry=malloc(sizeof(struct trace_item)), *tr_entry=malloc(sizeof(struct trace_item));
   size_t size;
   char *trace_file_name;
+  struct btb_entry btb_table[64];
+  memset(btb_table, 0, (sizeof(struct btb_entry) * 64));
+  
   
   //Buffer Declarations
   struct trace_item IF_ID;
@@ -22,16 +31,10 @@ int main(int argc, char **argv)
   struct trace_item EX_MEM;
   struct trace_item MEM_WB;
   
-  int trace_view_on = 0;
-  int stop = -1,  flag = 0, squash = 0; 
+  int trace_view_on = 0, added = 0, no_print = 0;
+  int stop = -1,  end = 0, taken = 0, branch_cycle = 0; 
+  unsigned int squashed[3];
   int branch_predictor = 0;
-  
-  unsigned char t_type = 0;
-  unsigned char t_sReg_a= 0;
-  unsigned char t_sReg_b= 0;
-  unsigned char t_dReg= 0;
-  unsigned int t_PC = 0;
-  unsigned int t_Addr = 0;
 
   unsigned int cycle_number = 0;
 
@@ -85,6 +88,8 @@ int main(int argc, char **argv)
 			b_pc = EX_MEM.PC;
 			id_pc = ID_EX.PC;
 			
+			//printf("Check Branch Condition\n");
+			
 			if((id_pc - b_pc) == 4)
 			{
 				//Branch not taken
@@ -92,7 +97,84 @@ int main(int argc, char **argv)
 			else
 			{
 				//branch taken, squash first two buffers
-				squash = 1;
+				for(int i = 0 ; i < 3 ; i++)
+				{
+					if(squashed[i] == 0)
+					{
+						squashed[i] = EX_MEM.PC;
+						break;
+					}
+				}
+				//branch_cycle == cycle_number+2;
+				/*if(!trace_view_on)
+				{
+					cycle_number= cycle_number+2;
+				}*/
+			}
+		}
+		
+		size = trace_get_item(&fetch_entry);
+   	}
+   	else if((branch_predictor == 1))
+   	{
+   		//Branch Detected, consult BTB
+   		if(IF_ID.type == 5)
+   		{
+   			//printf("BRANCH DETECTED\n");
+   			unsigned int b_pc;
+			
+			//Bitmask PC with 1111110000
+			int index = (IF_ID.Addr & 1008) >> 4;
+			//printf("Addr: %x\n", IF_ID.Addr);
+			//printf("index: %d\n", index);
+			//table entry matches
+			if(btb_table[index].entry_Addr == IF_ID.Addr)
+			{
+				//printf("PC value found for %d\n", IF_ID.Addr);
+				//printf("btb prediction: %d\n", btb_table[index].btb_taken);
+				taken = btb_table[index].btb_taken;
+			}
+			else
+			{
+				//overwrite or set BTB entry
+				//printf("Overwrite/Set\n");
+				btb_table[index].entry_Addr = IF_ID.Addr;
+				btb_table[index].btb_taken = 0; //predict not taken by default
+			}
+   		}
+   	
+   		if(EX_MEM.type == 5) //branch
+		{
+			//printf("BRANCH RESOLUTION:\n");
+			//Check PC of Branch with instruction in ID buffer
+			unsigned int b_pc, id_pc;
+			b_pc = EX_MEM.PC;
+			id_pc = ID_EX.PC;
+			//printf("Addr: %x\n", EX_MEM.Addr);
+			//printf("index: %d\n", (EX_MEM.Addr & 1008) >> 4);
+			//Branch not taken
+			if((id_pc - b_pc) == 4)
+			{
+				//prediction wrong, correct table
+				if(taken == 1)
+				{
+					int fix_index = (EX_MEM.Addr & 1008) >> 4;
+					btb_table[fix_index].btb_taken = 0;
+					btb_table[fix_index].entry_Addr = EX_MEM.Addr; //DEBUG if needed or not
+					//branch was taken, squash two loaded instructions
+
+				}
+			}
+			else //branch taken
+			{
+				//Prediction wrong
+				if(taken == 0)
+				{
+					int fix_index = (EX_MEM.Addr & 1008) >> 4;
+					btb_table[fix_index].btb_taken = 1;
+					btb_table[fix_index].entry_Addr = EX_MEM.Addr; //DEBUG if needed or not
+					//NOTE: no need to squash because trace is Dynamic
+				}
 			}
 		}
 		
@@ -109,6 +191,7 @@ int main(int argc, char **argv)
     }
     else{           
 		struct trace_item temp1, temp2;
+		no_print = 0;
 		//Copy first two buffers into temps
 		temp1 = IF_ID;
 		temp2 = ID_EX;
@@ -132,26 +215,49 @@ int main(int argc, char **argv)
 		*tr_entry = temp2;
 		
 		//Print Current Cycle instructions
+		//printf("---------Cycle:  %d---------\n", cycle_number);
 		//printf("IF_ID|| type: %d\n", IF_ID.type);
 		//printf("ID_EX|| type: %d\n", ID_EX.type);
 		//printf("EX_MEM|| type: %d\n", EX_MEM.type);
 		//printf("MEM_WB|| type: %d\n", MEM_WB.type);
-		
+		//printf("---------------------------\n\n");
+				
 		//clear the pipeline after the size returns an empty string
-		if(!size && flag == 0)
+		if(!size && end == 0)
 		{
-			flag = 1;
+			end = 1;
 			stop = cycle_number + 4;
-			squash = 1;
 		}
 			
-		cycle_number++;
+		cycle_number++;	
+		      	
+      	for(int j = 0 ; j < 3 ; j++)
+      	{
+      		if(squashed[j] == tr_entry->PC)
+      		{
+      			//printf("squashed[%d]: %x\n",j, squashed[j]);
+      			//printf("tr_entry->PC: %x\n", tr_entry->PC);
+      			if(trace_view_on)
+      			{
+					printf("[cycle %d] BRANCH:",cycle_number) ;
+		      		printf(" (PC: %x)(sReg_a: %d)(sReg_b: %d)(addr: %x)\n", tr_entry->PC, tr_entry->sReg_a, tr_entry->sReg_b, tr_entry->Addr);
+					printf("[cycle %d] SQUASHED\n",++cycle_number);
+					printf("[cycle %d] SQUASHED\n",++cycle_number);
+				}
+				else
+				{
+					cycle_number = cycle_number + 2;
+				}
+				squashed[j] = 0;
+				no_print = 1;
+      		}
+      	}	
     }  
 
-    if (trace_view_on) {/* print the executed instruction if trace_view_on=1 and don't print the first cycle's initial value*/
+    if (trace_view_on && !no_print) {/* print the executed instruction if trace_view_on=1 and don't print the first cycle's initial value*/
       switch(tr_entry->type) {
         case ti_NOP:
-          printf("[cycle %d] NOP:",cycle_number) ;
+          printf("[cycle %d] NOP:\n",cycle_number) ;
           break;
         case ti_RTYPE:
           printf("[cycle %d] RTYPE:",cycle_number) ;
@@ -185,15 +291,7 @@ int main(int argc, char **argv)
           printf(" (PC: %x) (sReg_a: %d)(addr: %x)\n", tr_entry->PC, tr_entry->dReg, tr_entry->Addr);
           break;
       }
-      	
-		if(squash == 1 && tr_entry->type == 5 && cycle_number < stop-1)
-		{
-			//insert squashes
-			cycle_number++;
-			printf("[cycle %d] SQUASHED\n",cycle_number);
-			cycle_number++;
-			printf("[cycle %d] SQUASHED\n",cycle_number);
-		}
+
     }
   }
 
