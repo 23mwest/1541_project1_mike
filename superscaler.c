@@ -40,6 +40,8 @@ int main(int argc, char **argv)
   memset(ALU, 0, (sizeof(struct trace_item) * 4)); 
   struct trace_item LW_SW[4];
   memset(LW_SW, 0, (sizeof(struct trace_item) * 4)); 
+  struct trace_item squashed[2];
+  
   
   struct btb_entry btb_table[64];
   memset(btb_table, 0, (sizeof(struct btb_entry) * 64)); 
@@ -48,9 +50,8 @@ int main(int argc, char **argv)
   char *trace_file_name;
   
   int trace_view_on = 0, added = 0, no_print = 0;
-  int stop = -1,  end = 0, taken = 0, branch_cycle = 0; 
+  int stop = -1,  end = 0, taken = 0, branch_cycle = 0, wait = 0; 
   int hold[2] = {0};
-  unsigned int squashed[5];
   int branch_predictor = 0;
 
   unsigned int cycle_number = 0;
@@ -84,16 +85,12 @@ int main(int argc, char **argv)
 
 //Begin pipeline computation
   while(1) {
+   	if(hold[0] != 1) size = trace_get_item(&fetch_1);
+	if(hold[1] != 1) size = trace_get_item(&fetch_2);
+	
+   	if(wait == 0) hold[0] = 0;
+   	if(wait == 0) hold[1] = 0;
    	
-   	if(hold[0] != 1){
-   		size = trace_get_item(&fetch_1);
-   	 }
-	if(hold[1] != 1) 
-	{   		
-		size = trace_get_item(&fetch_2);
-	} 
-   	hold[0] = 0;
-   	hold[1] = 0;
    	//printf("fetch_1 type : %d\n", fetch_1->type);
    	//printf("fetch_2 type : %d\n", fetch_2->type);  	  	
    
@@ -354,14 +351,14 @@ int main(int argc, char **argv)
 	}
 	
 	//Branch Prediction Cases
-	/*if( branch_predictor == 0 )
+	if( branch_predictor == 0 )
    	{ 
    		if( (ALU[1].type == 5)) //branch
 		{
 			//Check PC of Branch with instruction in ID buffer
 			unsigned int b_pc, id_pc;
-			b_pc = EX_MEM.PC;
-			id_pc = ID_EX.PC;
+			b_pc = ALU[1].PC;
+			id_pc = ALU[0].PC;
 			
 			//printf("Check Branch Condition\n");
 			
@@ -371,21 +368,115 @@ int main(int argc, char **argv)
 			}
 			else
 			{
-				//branch taken, squash first two buffers
-				for(int i = 0 ; i < 3 ; i++)
-				{
-					if(squashed[i] == 0)
-					{
-						squashed[i] = EX_MEM.PC;
-						break;
-					}
-				}
-				//branch_cycle == cycle_number+2;
+				//branch taken, squash instructions in REG stages
+				squashed[0] = *fetch_alu;
+				squashed[1] = *fetch_lw_sw;
+				
+				*fetch_alu = ALU[0];
+				*fetch_lw_sw = LW_SW[0];
+				 
+				ALU[0].type = 0;
+				ALU[0].sReg_a = 0;
+				ALU[0].sReg_b = 0;
+				ALU[0].dReg = 0;
+				ALU[0].PC = 0;
+				ALU[0].Addr = 1;
+				LW_SW[0].type = 0;
+				LW_SW[0].sReg_a = 0;
+				LW_SW[0].sReg_b = 0;
+				LW_SW[0].dReg = 0;
+				LW_SW[0].PC = 0;
+				LW_SW[0].Addr = 1;				
+				
+				hold[0] = 1;
+				hold[1] = 1;
+				wait = 1;
 			}
+			if(wait == 1) wait--;
+			
 		}
 		
-		size = trace_get_item(&fetch_entry);
-   	}*/
+   	}
+   	if((branch_predictor == 1))
+   	{
+   		//Branch Detected, consult BTB
+   		if(fetch_alu->type == 5)
+   		{
+   			//printf("BRANCH DETECTED\n");
+   			unsigned int b_pc;
+			
+			//Bitmask PC with 1111110000
+			int index = (fetch_alu->Addr & 1008) >> 4;
+			
+			//table entry matches
+			if(btb_table[index].entry_Addr == ALU[0].Addr)
+			{
+				taken = btb_table[index].btb_taken;
+			}
+			else
+			{
+				//overwrite or set BTB entry
+				btb_table[index].entry_Addr = fetch_alu->Addr;
+				btb_table[index].btb_taken = 0; //predict not taken by default
+			}
+   		}
+   		
+   		if(ALU[1].type == 5) //branch
+		{
+			//printf("BRANCH RESOLUTION:\n");
+			//Check PC of Branch with instruction in ID buffer
+			unsigned int b_pc, id_pc;
+			b_pc = ALU[1].PC;
+			id_pc = ALU[0].PC;
+			//Branch not taken
+			if((id_pc - b_pc) == 4)
+			{
+				//prediction wrong, correct table
+				if(taken == 1)
+				{
+					int fix_index = (ALU[1].Addr & 1008) >> 4;
+					btb_table[fix_index].btb_taken = 0;
+					btb_table[fix_index].entry_Addr = ALU[1].Addr;
+					//branch was taken, squash two loaded instructions
+					squashed[0] = *fetch_alu;
+					squashed[1] = *fetch_lw_sw;
+				
+					*fetch_alu = ALU[0];
+					*fetch_lw_sw = LW_SW[0];
+					 
+					ALU[0].type = 0;
+					ALU[0].sReg_a = 0;
+					ALU[0].sReg_b = 0;
+					ALU[0].dReg = 0;
+					ALU[0].PC = 0;
+					ALU[0].Addr = 1;
+					LW_SW[0].type = 0;
+					LW_SW[0].sReg_a = 0;
+					LW_SW[0].sReg_b = 0;
+					LW_SW[0].dReg = 0;
+					LW_SW[0].PC = 0;
+					LW_SW[0].Addr = 1;				
+				
+					hold[0] = 1;
+					hold[1] = 1;
+					wait = 1;
+				}
+			}
+			else //branch taken
+			{
+				//Prediction wrong
+				if(taken == 0)
+				{
+					int fix_index = (ALU[1].Addr & 1008) >> 4;
+					btb_table[fix_index].btb_taken = 1;
+					btb_table[fix_index].entry_Addr = ALU[1].Addr; //DEBUG if needed or not
+					//NOTE: no need to squash because trace is Dynamic
+				}
+			}
+			if(wait == 1) wait--;
+			
+		}
+   	}
 		
 		//Superscaler Pipelines REG[0] => EX[1] => MEM[2] => WB[3]
 		*alu_entry = ALU[3];
