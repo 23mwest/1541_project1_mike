@@ -6,6 +6,7 @@
 ***************************************************************/
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
 #include <string.h> //added
@@ -70,7 +71,7 @@ int main(int argc, char **argv)
 //Begin pipeline computation
   while(1) {
   
-  	// Check for lw hazard DEBUG: should these be detected in the ID_EX buffer?
+  	// Check for lw hazard DEBUG: should these be detected in the ID_EX buffer? DEBUG1
   	if( (EX_MEM.type == 3) && ((EX_MEM.dReg == IF_ID.sReg_a) || (EX_MEM.dReg == IF_ID.sReg_b)))
   	{
   		*fetch_entry = IF_ID;
@@ -81,7 +82,7 @@ int main(int argc, char **argv)
    	}
    	else if( branch_predictor == 0 )
    	{ 
-   		if( (EX_MEM.type == 5)) //branch
+   		if( EX_MEM.type == 5) //branch
 		{
 			//Check PC of Branch with instruction in ID buffer
 			unsigned int b_pc, id_pc;
@@ -115,7 +116,7 @@ int main(int argc, char **argv)
 		
 		size = trace_get_item(&fetch_entry);
    	}
-   	else if((branch_predictor == 1))
+   	else if(branch_predictor == 1)
    	{
    		//Branch Detected, consult BTB
    		if(IF_ID.type == 5)
@@ -161,8 +162,8 @@ int main(int argc, char **argv)
 					int fix_index = (EX_MEM.Addr & 1008) >> 4;
 					btb_table[fix_index].btb_taken = 0;
 					btb_table[fix_index].entry_Addr = EX_MEM.Addr; //DEBUG if needed or not
-					//branch was taken, squash two loaded instructions
-
+					//branch was taken, squash two loaded instructions DEBUG add this?
+	
 				}
 			}
 			else //branch taken
@@ -233,10 +234,10 @@ int main(int argc, char **argv)
 		      	
       	for(int j = 0 ; j < 3 ; j++)
       	{
-      		if(squashed[j] == tr_entry->PC)
+      		if(squashed[j] == tr_entry->PC && cycle_number > 5)
       		{
-      			//printf("squashed[%d]: %x\n",j, squashed[j]);
-      			//printf("tr_entry->PC: %x\n", tr_entry->PC);
+      			printf("squashed[%d]: %x\n",j, squashed[j]);
+      			printf("tr_entry->PC: %x\n", tr_entry->PC);
       			if(trace_view_on)
       			{
 					printf("[cycle %d] BRANCH:",cycle_number) ;
@@ -254,7 +255,7 @@ int main(int argc, char **argv)
       	}	
     }  
 
-    if (trace_view_on && !no_print) {/* print the executed instruction if trace_view_on=1 and don't print the first cycle's initial value*/
+    if (trace_view_on && !no_print && cycle_number > 5) {/* print the executed instruction if trace_view_on=1 and don't print the first cycle's initial value*/
       switch(tr_entry->type) {
         case ti_NOP:
           printf("[cycle %d] NOP:\n",cycle_number) ;
