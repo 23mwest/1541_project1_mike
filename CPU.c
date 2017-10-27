@@ -72,7 +72,7 @@ int main(int argc, char **argv)
   while(1) {
   
   	// Check for lw hazard DEBUG: should these be detected in the ID_EX buffer? DEBUG1
-  	if( (EX_MEM.type == 3) && ((EX_MEM.dReg == IF_ID.sReg_a) || (EX_MEM.dReg == IF_ID.sReg_b)))
+  	if( (EX_MEM.type == 3) && ((EX_MEM.dReg == ID_EX.sReg_a) || (EX_MEM.dReg == ID_EX.sReg_b)))
   	{
   		*fetch_entry = IF_ID;
   		
@@ -91,11 +91,7 @@ int main(int argc, char **argv)
 			
 			//printf("Check Branch Condition\n");
 			
-			if((id_pc - b_pc) == 4)
-			{
-				//Branch not taken
-			}
-			else
+			if((id_pc - b_pc) != 4)
 			{
 				//branch taken, squash first two buffers
 				for(int i = 0 ; i < 3 ; i++)
@@ -106,11 +102,6 @@ int main(int argc, char **argv)
 						break;
 					}
 				}
-				//branch_cycle == cycle_number+2;
-				/*if(!trace_view_on)
-				{
-					cycle_number= cycle_number+2;
-				}*/
 			}
 		}
 		
@@ -163,7 +154,14 @@ int main(int argc, char **argv)
 					btb_table[fix_index].btb_taken = 0;
 					btb_table[fix_index].entry_Addr = EX_MEM.Addr; //DEBUG if needed or not
 					//branch was taken, squash two loaded instructions DEBUG add this?
-	
+					for(int i = 0 ; i < 3 ; i++)
+					{
+						if(squashed[i] == 0)
+						{
+							squashed[i] = EX_MEM.PC;
+							break;
+						}
+					}
 				}
 			}
 			else //branch taken
@@ -175,6 +173,15 @@ int main(int argc, char **argv)
 					btb_table[fix_index].btb_taken = 1;
 					btb_table[fix_index].entry_Addr = EX_MEM.Addr; //DEBUG if needed or not
 					//NOTE: no need to squash because trace is Dynamic
+					//NOTEv2: The above assumption is wrong and why we lost points
+					for(int i = 0 ; i < 3 ; i++)
+					{
+						if(squashed[i] == 0)
+						{
+							squashed[i] = EX_MEM.PC;
+							break;
+						}
+					}					
 				}
 			}
 		}
@@ -234,10 +241,8 @@ int main(int argc, char **argv)
 		      	
       	for(int j = 0 ; j < 3 ; j++)
       	{
-      		if(squashed[j] == tr_entry->PC && cycle_number > 5)
+      		if(squashed[j] == tr_entry->PC && cycle_number >= 5 && !end)
       		{
-      			printf("squashed[%d]: %x\n",j, squashed[j]);
-      			printf("tr_entry->PC: %x\n", tr_entry->PC);
       			if(trace_view_on)
       			{
 					printf("[cycle %d] BRANCH:",cycle_number) ;
@@ -255,7 +260,7 @@ int main(int argc, char **argv)
       	}	
     }  
 
-    if (trace_view_on && !no_print && cycle_number > 5) {/* print the executed instruction if trace_view_on=1 and don't print the first cycle's initial value*/
+    if (trace_view_on && !no_print && cycle_number >= 5) {/* print the executed instruction if trace_view_on=1 and don't print the first cycle's initial value*/
       switch(tr_entry->type) {
         case ti_NOP:
           printf("[cycle %d] NOP:\n",cycle_number) ;
@@ -285,7 +290,7 @@ int main(int argc, char **argv)
           printf(" (PC: %x)(addr: %x)\n", tr_entry->PC,tr_entry->Addr);
           break;
         case ti_SPECIAL:
-          printf("[cycle %d] SPECIAL:",cycle_number) ;      	
+          printf("[cycle %d] SPECIAL:\n",cycle_number) ;      	
           break;
         case ti_JRTYPE:
           printf("[cycle %d] JRTYPE:",cycle_number) ;
