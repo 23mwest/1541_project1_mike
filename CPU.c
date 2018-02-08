@@ -36,22 +36,23 @@ int main(int argc, char **argv)
   int stop = -1,  end = 0, taken = 0, branch_cycle = 0; 
   unsigned int squashed[3];
   int branch_predictor = 0;
+  unsigned int prediction_state = 0;
 
   unsigned int cycle_number = 0;
 
+//Handle inputs
+//Default: Assume branches not taken & Do not trace individual items
   if (argc == 2) {
-    //Assume branch prediction field = 0 and trace = 0
-    
-    
+    //Assume branch prediction field = 0 and trace = 0  
   }
   else if (argc == 4) {
   	branch_predictor = atoi(argv[2]);
   	trace_view_on = atoi(argv[3]);
   }
   else {
- 	fprintf(stdout, "\nUSAGE: tv <trace_file> <branch prediction (0/1)> <switch - (0/1)>\n");
-    fprintf(stdout, "\n(branch) 0- predict not taken 1- use 1-bit branch detector.\n");
-    fprintf(stdout, "\n(switch) to turn on or off individual item view.\n\n");
+ 	fprintf(stdout, "\nUSAGE: tv <trace_file> <branch prediction (0/1/2)> <switch - (0/1)>\n");
+    fprintf(stdout, "\n(branch) 0- predict not taken; 1- use 1-bit branch detector; 2- use 2-bit branch detector\n");
+    fprintf(stdout, "\n(switch) to turn on(1) or off(0) individual item view.\n\n");
     exit(0);
   }
     
@@ -72,6 +73,7 @@ int main(int argc, char **argv)
   while(1) {
   
   	// Check for lw hazard DEBUG: should these be detected in the ID_EX buffer? DEBUG1
+  	//
   	if( (EX_MEM.type == 3) && ((EX_MEM.dReg == ID_EX.sReg_a) || (EX_MEM.dReg == ID_EX.sReg_b)))
   	{
   		*fetch_entry = IF_ID;
@@ -80,14 +82,15 @@ int main(int argc, char **argv)
   		
   		ID_EX.type = 0;		
    	}
+   	//Assume branches as "not taken"
    	else if( branch_predictor == 0 )
    	{ 
    		if( EX_MEM.type == 5) //branch
 		{
 			//Check PC of Branch with instruction in ID buffer
 			unsigned int b_pc, id_pc;
-			b_pc = EX_MEM.PC;
-			id_pc = ID_EX.PC;
+			b_pc = EX_MEM.PC; //Branch PC
+			id_pc = ID_EX.PC; //PC+4
 			
 			//printf("Check Branch Condition\n");
 			
@@ -107,6 +110,8 @@ int main(int argc, char **argv)
 		
 		size = trace_get_item(&fetch_entry);
    	}
+   	//If stored in BTB - Take last prediction
+   	//Else - Predict "not taken"
    	else if(branch_predictor == 1)
    	{
    		//Branch Detected, consult BTB
@@ -134,17 +139,17 @@ int main(int argc, char **argv)
 				btb_table[index].btb_taken = 0; //predict not taken by default
 			}
    		}
-   	
+   		 	
    		if(EX_MEM.type == 5) //branch
 		{
-			//printf("BRANCH RESOLUTION:\n");
+			printf("BRANCH RESOLUTION:\n");
 			//Check PC of Branch with instruction in ID buffer
 			unsigned int b_pc, id_pc;
 			b_pc = EX_MEM.PC;
 			id_pc = ID_EX.PC;
 			//printf("Addr: %x\n", EX_MEM.Addr);
 			//printf("index: %d\n", (EX_MEM.Addr & 1008) >> 4);
-			//Branch not taken
+			//Predict branch not taken
 			if((id_pc - b_pc) == 4)
 			{
 				//prediction wrong, correct table
@@ -164,7 +169,7 @@ int main(int argc, char **argv)
 					}
 				}
 			}
-			else //branch taken
+			else //predict branch taken
 			{
 				//Prediction wrong
 				if(taken == 0)
@@ -188,6 +193,151 @@ int main(int argc, char **argv)
 		
 		size = trace_get_item(&fetch_entry);
    	}
+   	else if(branch_predictor == 2)
+   	{
+   		
+   		//TODO: Move Branch Prediction and Resolution to function 
+   		if(IF_ID.type == 5)
+   		{
+   			printf("BRANCH DETECTED\n");
+   			unsigned int b_pc;
+			
+			//Bitmask PC with 1111110000
+			int index = (IF_ID.Addr & 1008) >> 4;
+			//printf("Addr: %x\n", IF_ID.Addr);
+			//printf("index: %d\n", index);
+			//table entry matches
+			if(btb_table[index].entry_Addr == IF_ID.Addr)
+			{
+				//printf("PC value found for %d\n", IF_ID.Addr);
+				//printf("btb prediction: %d\n", btb_table[index].btb_taken);
+				taken = btb_table[index].btb_taken;
+			}
+			else
+			{
+				//overwrite or set BTB entry
+				//printf("Overwrite/Set\n");
+				btb_table[index].entry_Addr = IF_ID.Addr;
+				btb_table[index].btb_taken = 0; //predict not taken by default
+			}
+   		}
+   		
+   		if(EX_MEM.type == 5) //branch
+		{
+			printf("BRANCH RESOLUTION:\n");
+			//Check PC of Branch with instruction in ID buffer
+			unsigned int b_pc, id_pc;
+			b_pc = EX_MEM.PC;
+			id_pc = ID_EX.PC;
+			//printf("Addr: %x\n", EX_MEM.Addr);
+			//printf("index: %d\n", (EX_MEM.Addr & 1008) >> 4);
+			//Predict branch not taken
+			if((id_pc - b_pc) == 4)
+			{
+				//prediction wrong, correct table
+				if(taken == 1)
+				{
+					prediction_state = 2;				
+					int fix_index = (EX_MEM.Addr & 1008) >> 4;
+					btb_table[fix_index].btb_taken = 0;
+					btb_table[fix_index].entry_Addr = EX_MEM.Addr; //DEBUG if needed or not
+					//branch was taken, squash two loaded instructions DEBUG add this?
+					for(int i = 0 ; i < 3 ; i++)
+					{
+						if(squashed[i] == 0)
+						{
+							squashed[i] = EX_MEM.PC;
+							break;
+						}
+					}
+				} else prediction_state = 1;
+			}
+			else //predict branch taken
+			{
+				//Prediction wrong
+				if(taken == 0)
+				{
+					prediction_state = 3;
+					int fix_index = (EX_MEM.Addr & 1008) >> 4;
+					btb_table[fix_index].btb_taken = 1;
+					btb_table[fix_index].entry_Addr = EX_MEM.Addr; //DEBUG if needed or not
+					//NOTE: no need to squash because trace is Dynamic
+					//NOTEv2: The above assumption is wrong and why we lost points
+					for(int i = 0 ; i < 3 ; i++)
+					{
+						if(squashed[i] == 0)
+						{
+							squashed[i] = EX_MEM.PC;
+							break;
+						}
+					}					
+				} else prediction_state = 4;
+			}
+		
+   		
+   		
+   		/* 
+if(EX_MEM.type == 5) {
+   			//Get current prediction state 
+   			unsigned int b_pc, id_pc; b_pc = EX_MEM.PC; id_pc =
+   			ID_EX.PC;
+
+   			if((id_pc - b_pc) == 4) {
+				//Predicted Not Taken
+				if(taken == 1) prediction_state = 2; else
+				prediction_state = 1;
+			} else { 
+				//Predicted Taken
+				if(taken == 1) prediction_state = 4; else
+				prediction_state = 3;
+			}
+			}		}
+ */	
+			//TEST
+			printf("Current State: %d\n", prediction_state);	
+				
+   		   		
+			//Set next prediction state   		
+			switch(prediction_state)
+			{
+				case 1:					
+					if(taken == 1) prediction_state = 4; else prediction_state = 2; 
+					break;
+				case 2:					
+					if(taken == 1) prediction_state = 1; else prediction_state = 2;
+					break;
+				case 3:					
+					if(taken == 1) prediction_state = 4; else prediction_state = 2;
+					break;
+				case 4:
+					if(taken == 1) prediction_state = 4; else prediction_state = 3;
+					break;
+				default:
+					//To Start, Assume branch is not taken 
+					//          and has not made a mistake 
+					prediction_state = 2;
+			}
+			
+			//TEST
+			printf("Next State: %d\n", prediction_state);
+			
+			}
+		
+		size = trace_get_item(&fetch_entry);
+			
+   	}	
+   	//TODO: else if(branch_predictor == 2)
+   		//int state 1-4
+   		//FSM:
+   		// switch case (state)
+   		//     state 1
+   		//        if(taken) 4 else 2
+   		//     state 2 
+   		//         if(taken) 1 else 2
+   		//     state 3 
+   		//         if(taken) 4 else 2
+   		//     state 4 
+   		//          if(taken) 4 else 3
    	else
    	{
     	size = trace_get_item(&fetch_entry);
